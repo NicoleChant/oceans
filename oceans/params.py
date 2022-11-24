@@ -4,7 +4,7 @@ madrid_timezone = pytz.timezone("Europe/Madrid")
 
 WEBCAM_LOCATIONS = {
     "Nigran": "https://waira.com/webcam/",  #<---- predicting!!!
-    "California": "https://hdontap.com/index.php/video/stream/el-porto-surf-cam", #FINISHED
+    "ElPorto": "https://hdontap.com/index.php/video/stream/el-porto-surf-cam", #FINISHED
     "Zarautz": "https://quiksilver.es/surf/webcams/zarautz.html?src=shipping_b",
     "Hawai": "https://explore.org/livecams/hawaii/hawaii-pipeline-cam",
     "La Coruna": "https://www.camaramar.com/webcam-playas/galicia/acoru%C3%B1a/doninos"

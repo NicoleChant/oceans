@@ -7,6 +7,6 @@ def timeworker(func : Callable) -> Callable:
     def check_worker_performance(*args,**kwargs):
         then = datetime.now()
         result = func(*args,**kwargs)
-        print(f"Worker 🔨 finished within {(datetime.now()-then).total_seconds():.2f}")
+        print(f"Worker 🔨 finished within {(datetime.now()-then).total_seconds():.2f} second(s).")
         return result
     return check_worker_performance

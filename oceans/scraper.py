@@ -10,7 +10,7 @@ from termcolor import colored
 import concurrent.futures
 from oceans.params import *
 from oceans.utils import timeworker
-from oceans.honey_sources import store_honey_to_cloud
+from oceans.honey_sources import store_to_cloud
 from dataclasses import dataclass , field
 import functools
 from selenium import webdriver
@@ -45,9 +45,8 @@ class Bee(ABC):
     until_returns_to_hive : ClassVar[int] = 10
     driver : ... = field(init=False,repr=False)
     image : ... = field(init=False,repr=False)
-    store_to_cloud : bool = field(repr=False,default=False)
-    storage_client : ... = field(repr=False,default=None,init=False)
-    MAX_CARGO : ClassVar[int] = 50
+    store_cloud : bool = field(repr = False , default = False)
+    MAX_CARGO : ClassVar[int] = 20
 
     def __post_init__(self) -> None:
         """Please DO NOT modify the Bee Hive code
@@ -67,10 +66,6 @@ class Bee(ABC):
 
         ##initialize webdriver
         self.driver = webdriver.Chrome(options=options)
-
-        ##initialize storage client if instance attribute store_to_cloud=True
-        if self.store_to_cloud:
-            self.storage_client = storage.Client()
 
         if self.height and self.width:
             self.driver.set_window_size(self.width,self.height)
@@ -121,10 +116,9 @@ class Bee(ABC):
             image_num = self._find_image_number()
             time_now = datetime.now().astimezone(madrid_timezone)
             image_name = f"{type(self).__name__}__ocean__" + time_now.strftime("%Y-%m-%d_%H:%M:%S") + "__" + str(image_num) + ".png"
-            path = pathlib.Path(f"images/{type(self).__name__}")
+            path = pathlib.Path( os.path.join( os.path.dirname(__file__) , f"images/{type(self).__name__}"))
             imagepath = path / image_name
             imagepath.parent.mkdir(parents=True, exist_ok=True)
-
             with imagepath.open(mode="wb") as f_img:
                 f_img.write(honey_bytes)
             print(colored(f"Honey from {self.location} was stored succesfully 🍯", "green"),flush=True)
@@ -135,7 +129,7 @@ class Bee(ABC):
             return False
 
     def _find_image_number(self) -> int:
-        p = pathlib.Path(f"images/{type(self).__name__}")
+        p = pathlib.Path(os.path.join( os.path.dirname(__file__) , f"images/{type(self).__name__}"))
         p.mkdir(parents=True, exist_ok=True)
         images = [x for x in p.glob("*.png") if x.is_file()]
         return len(images) + 1
@@ -148,7 +142,7 @@ class Bee(ABC):
 
     @property
     def has_full_cargo(self) -> bool:
-        return len(os.listdir("images")) > Bee.MAX_CARGO
+        return self.store_cloud and len(os.listdir(os.path.join( os.path.dirname(__file__) , "images", self.location + "Bee"))) > Bee.MAX_CARGO
 
     def waggle(self , until : float) -> bool:
         """Bee waggles to collect valuable honey"""
@@ -165,8 +159,8 @@ class Bee(ABC):
                 self.return_to_hive()
                 return True
 
-            #if self.has_full_cargo:
-            #    store_honey_to_cloud()
+            if self.has_full_cargo:
+                store_to_cloud(location = self.location)
 
             image_bytes = self.image.screenshot_as_png
             self.store_honey(image_bytes)
@@ -184,8 +178,7 @@ class ElPortoBee(Bee):
 
         #check if element exists
         ifr = WebDriverWait(self.driver, Bee.traveling_timeout).until(
-            EC.presence_of_element_located(
-                (By.XPATH, "//iframe[@id='gdpr-consent-notice']")))
+            EC.presence_of_element_located((By.XPATH, "//iframe[@id='gdpr-consent-notice']")))
         self.switch_flower(ifr)
         self.driver.find_element(By.XPATH , "//button[@id='save']").click()
         self.reset_flower()
@@ -321,7 +314,7 @@ class Hive:
         self.video_uris : dict[str,str] = WEBCAM_LOCATIONS
         self.bees : dict[str,Bee] = {
                                     "Nigran": NigranBee,
-                                    "California": ElPortoBee,
+                                    "ElPorto": ElPortoBee,
                                     "Zarautz" : ZarautzBee,
                                     "Hawai": HawaiBee,
                                     #NOT IMPLEMENTED For LaCoruna due to Registration FireWall
@@ -358,6 +351,7 @@ class Hive:
     def initialize_collection(locations : Union[Iterable[str],Iterator[str]] ,
                                 headless_bee : bool ,
                                 width : int ,
+                                store_cloud : bool ,
                                 height : int ,
                                 drift : float ,
                                 until :float) -> None:
@@ -372,7 +366,7 @@ class Hive:
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
             worker_tasks = []
             for location in locations:
-                data = dict(location = location , headless_bee = headless_bee , width = width , height = height , drift = drift , until = until)
+                data = dict(location = location , store_cloud = store_cloud , headless_bee = headless_bee , width = width , height = height , drift = drift , until = until)
                 worker_tasks.append(executor.submit(Hive.create_worker , data))
                 print(f"Creating bee worker for location {location}...")
 
@@ -393,6 +387,7 @@ if __name__ == "__main__":
     parser.add_argument("-d","--drift" , type = int , default = 20)
     parser.add_argument("-w","--width", type=int , default=1800)
     parser.add_argument("-ht","--height" , type = int , default = 1000)
+    parser.add_argument("-c","--cloud", type = bool , default =  False)
     parser.add_argument("-m","--mode" , type = str , default = "normal", required = True, choices=["normal","multi"])
 
     print("Initializing honey collection protocol.\nPress Ctrl+C to terminate the collection process...")
@@ -403,12 +398,14 @@ if __name__ == "__main__":
             case "normal":
                 Hive().get_worker(args.location ,
                                   headless_bee = False,
+                                  store_cloud = args.cloud ,
                                   width = args.width ,
                                   height = args.height,
                                   drift = args.drift).waggle(until = args.until)
             case "multi":
-                Hive.initialize_collection(locations = list(Hive().get_locations()),
+                Hive.initialize_collection(locations = Hive().get_locations(),
                                             headless_bee = args.headless_bee,
+                                            store_cloud = args.cloud ,
                                             width = args.width,
                                             height = args.height,
                                             drift = args.drift,
@@ -417,6 +414,8 @@ if __name__ == "__main__":
                 print(colored(f"Unknown mode detected {args.mode}!","red"))
     except KeyboardInterrupt:
         print(colored("All Bees return to the Hive! 🛖", "red"))
+    except Exception as e:
+        print(f"Wooooops! It seems that the following error occured: {e}")
     finally:
         print(colored("Terminating collection! ❌", "red"))
         sys.exit(1)
